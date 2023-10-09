@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-tcp-relay-config
+data:
+  nginx.conf: |
+    worker_processes auto;
+    error_log /var/log/nginx/error.log;
+
+    events {
+        worker_connections 1024;
+    }
+
+    stream {
+        log_format basic '$remote_addr [$time_local] '
+                          '$bytes_sent $bytes_received '
+                          '$session_time';
+
+        access_log /var/log/nginx/access.log basic;
+
+        upstream backend {
+            zone tcp_backend 64k;
+            server 173.44.139.215:443 max_fails=2 fail_timeout=5s;
+            server 173.44.139.215:443 max_fails=2 fail_timeout=5s;
+        }
+
+        server {
+            listen 443;
+
+            proxy_pass backend;
+        }
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-test
+  template:
+    metadata:
+      labels:
+        app: nginx-test
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.21.3
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        ports:
+        - containerPort: 443
+      volumes:
+      - name: config-volume
+        configMap:
+          name: nginx-tcp-relay-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 443
+    targetPort: 443
+  selector:
+    app: nginx-test
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    #nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    #nginx.ingress.kubernetes.io/proxy-ssl-server-name: "on"
+    #nginx.ingress.kubernetes.io/proxy-ssl-name: "https://frankfurt.micheal.ch"
+    #nginx.ingress.kubernetes.io/upstream-vhost: "https://frankfurt.micheal.ch"
+  name: test
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: frankfurt.micheal.ch
+    http:
+      paths:
+      - backend:
+          service:
+            name: test
+            port:
+              number: 443
+        path: /
+        pathType: Prefix
+  tls:
+    - hosts:
+      - frankfurt.micheal.ch
+      secretName: frankfurt.micheal.ch

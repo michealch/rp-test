@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: haproxy-configmap
+data:
+  haproxy.cfg: |
+    global
+        log stdout format raw local0
+
+    defaults
+        log global
+        mode tcp
+        timeout connect 10s
+        timeout client 30m
+        timeout server 30m
+    
+    frontend tcp_front
+        bind *:443
+        default_backend tcp_back
+    
+    backend tcp_back
+        balance roundrobin
+        server tcpserver-0 173.44.139.215:443 check
+        server tcpserver-1 173.44.139.215:443 check
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: haproxy-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: haproxy-test
+  template:
+    metadata:
+      labels:
+        app: haproxy-test
+    spec:
+      containers:
+      - name: haproxy
+        image: haproxy:2.4
+        volumeMounts:
+        - name: config-volume
+          mountPath: /usr/local/etc/haproxy/haproxy.cfg
+          subPath: haproxy.cfg
+      volumes:
+      - name: config-volume
+        configMap:
+          name: haproxy-configmap
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 443
+    targetPort: 443
+  selector:
+    app: haproxy-test
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    #nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    #nginx.ingress.kubernetes.io/proxy-ssl-server-name: "on"
+    #nginx.ingress.kubernetes.io/proxy-ssl-name: "https://frankfurt.micheal.ch"
+    #nginx.ingress.kubernetes.io/upstream-vhost: "https://frankfurt.micheal.ch"
+  name: test
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: frankfurt.micheal.ch
+    http:
+      paths:
+      - backend:
+          service:
+            name: test
+            port:
+              number: 443
+        path: /
+        pathType: Prefix
+  tls:
+    - hosts:
+      - frankfurt.micheal.ch
+      secretName: frankfurt.micheal.ch
