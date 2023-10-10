@@ -6,7 +6,7 @@ data:
   nginx.conf: |
     worker_processes auto;
     error_log /var/log/nginx/error.log;
-
+    pid /tmp/nginx.pid;
     events {
         worker_connections 1024;
     }
@@ -48,13 +48,32 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: nginx:1.21.3
+        image: nginxinc/nginx-unprivileged
         volumeMounts:
         - name: config-volume
           mountPath: /etc/nginx/nginx.conf
           subPath: nginx.conf
         ports:
         - containerPort: 443
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 443
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 443
+          initialDelaySeconds: 10
+          periodSeconds: 20
+        resources:
+          limits:
+            cpu: "1"
+            memory: "512Mi"
+          requests:
+            cpu: "0.5"
+            memory: "256Mi"
       volumes:
       - name: config-volume
         configMap:

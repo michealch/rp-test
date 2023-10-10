@@ -45,6 +45,20 @@ spec:
         - name: config-volume
           mountPath: /usr/local/etc/haproxy/haproxy.cfg
           subPath: haproxy.cfg
+        readinessProbe:
+          tcpSocket:
+            port: 443
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 443
+          initialDelaySeconds: 30
+          periodSeconds: 60
+        resources:
+          limits:
+            cpu: "1"
+            memory: "512Mi"
       volumes:
       - name: config-volume
         configMap:
